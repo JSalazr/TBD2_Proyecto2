@@ -27,8 +27,6 @@ int get_size_in_bytes(int initial_size, char* multiplier){
 }
 
 int create_file(int size, char* name){
-    clean_buffer();
-
     std::ofstream ofs(name, std::ios::binary | std::ios::out);
     ofs.seekp(size - 1);
     ofs.write("", 1);
