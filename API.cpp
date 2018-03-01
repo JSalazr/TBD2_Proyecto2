@@ -7,6 +7,7 @@
 #define SIZE_DIR 0
 #define TABLES_TABLE_DIR 4
 #define NUMBER_OF_TABLES 8
+#define NUMBER_OF_BLOCKS 12
 
 using namespace std;
 
@@ -21,16 +22,38 @@ void clean_buffer(){
 void toggle_bit(int pos, char* name){
     std::fstream fs (name, std::ios::in | std::ios::out);
     clean_buffer();
-    fs.seekp(BLOCK_SIZE);
+    fs.seekp(BLOCK_SIZE, ios_base::beg);
     fs.read(buffer, BLOCK_SIZE);
     int pos_block = pos / 8;
     int bit_in_char = pos % 8;
     char byte_to_edit = buffer[pos_block];
     byte_to_edit ^= 1UL << bit_in_char;
-    memcpy(&buffer[pos_block], &char_to_edit, 1);
-    fs.seekp(BLOCK_SIZE);
+    memcpy(&buffer[pos_block], &byte_to_edit, 1);
+    fs.seekp(BLOCK_SIZE, ios_base::beg);
     fs.write(buffer, BLOCK_SIZE);
     fs.close();
+}
+
+int find_next_empty_block(char* name){
+    std::fstream fs (name, std::ios::in | std::ios::out);
+    clean_buffer();
+    fs.read(buffer, BLOCK_SIZE);
+    int number_of_blocks;
+    memcpy(&number_of_blocks, &buffer[NUMBER_OF_BLOCKS], 4);
+    clean_buffer();
+    fs.seekp(BLOCK_SIZE, ios_base::beg);
+    fs.read(buffer, BLOCK_SIZE);
+    for(int c = 0; c < number_of_blocks / 8; c++){
+        char byte_to_check = buffer[c];
+        for(int a = 0; a < 8; a++){
+            int check = 1 << a;
+            if((byte_to_check & check) == 0){
+                fs.close();
+                return c * 8 + a;
+            }
+        }
+    }
+    return 0;
 }
 
 int get_size_in_bytes(int initial_size, char* multiplier){
@@ -46,17 +69,21 @@ int get_size_in_bytes(int initial_size, char* multiplier){
 
 int create_database(int size, char* name){
     std::ofstream ofs(name, std::ios::binary | std::ios::out);
-    ofs.seekp(size - BLOCK_SIZE);
+    ofs.seekp(size - BLOCK_SIZE, ios_base::beg);
     ofs.write("", 1);
+    ofs.close();
 }
 
 void format_database(int size, char* name){
     int number_of_blocks = size / BLOCK_SIZE;
     float blocks_for_bitmap = ceil(float(number_of_blocks) / float(BLOCK_SIZE));
     blocks_for_bitmap += 1;
+    int number_of_tables = 0;
     clean_buffer();
     memcpy(&buffer[SIZE_DIR], &size, 4);
     memcpy(&buffer[TABLES_TABLE_DIR], &blocks_for_bitmap, 4);
+    memcpy(&buffer[NUMBER_OF_TABLES], &number_of_tables, 4);
+    memcpy(&buffer[NUMBER_OF_BLOCKS], &number_of_blocks, 4);
     std::fstream fs(name, std::ios::in | std::ios::out);
     fs.write(buffer, BLOCK_SIZE);
     fs.close();
@@ -68,4 +95,106 @@ void format_database(int size, char* name){
 
 void delete_database(char* name){
     remove(name);
+}
+
+void show_tables(char* name){
+    std::fstream fs (name, std::ios::in | std::ios::out);
+    clean_buffer();
+    fs.seekp(BLOCK_SIZE * 2, ios_base::beg);
+    fs.read(buffer, BLOCK_SIZE);
+
+    struct TableInfo *tables = (struct TableInfo*)malloc(sizeof(struct TableInfo));
+    int pos = 0;
+    while(pos * sizeof(struct TableInfo) < BLOCK_SIZE){
+        memcpy(tables, &buffer[pos*sizeof(struct TableInfo)], sizeof(struct TableInfo));
+        if(tables->used == 1){
+            cout << tables->table_name << endl;
+        }
+        pos++;
+    }
+    fs.close();
+}
+
+void create_table(char* name, char* table_name, char* columns, char* types, char* key){
+    char* column_names;
+    column_names = strtok(columns, "=");
+    column_names = strtok(NULL, "=");
+    char* column_types;
+    column_types = strtok(types, "=");
+    column_types = strtok(NULL, "=");
+    char* prim_key;
+    prim_key = strtok(key, "=");
+    prim_key = strtok(NULL, "=");
+
+    struct Column *columns_info[15];
+    char *column, *type;
+    column = strtok(column_names, ",");
+
+    int block_for_table_metadata = find_next_empty_block(name);
+    
+    int c = 0;
+    while(column != NULL){
+        columns_info[c] = (struct Column*)malloc(sizeof(struct Column));
+        strcpy(&columns_info[c]->column_name[0], column);
+        column = strtok(NULL, ",");
+        c++;
+    }
+
+    clean_buffer();
+    int size_of_register = 0;
+    type = strtok(column_types, ",");
+    for(int a=0; a < c; a++){
+        if(!strcmp(type, "int")){
+            columns_info[a]->type = 'i';
+            int column_size = 4;
+            memcpy(&columns_info[a]->size, &column_size, 4);
+        }else{
+            columns_info[a]->type = 'v';
+            char* temp;
+            temp = strtok(type, "(");
+            temp = strtok(NULL, ")");
+            int column_size = atoi(temp);
+            memcpy(&columns_info[a]->size, &column_size, 4);
+        }
+        if(!strcmp(columns_info[a]->column_name, prim_key)){
+            columns_info[a]->primary_key = 1;
+        }else{
+            columns_info[a]->primary_key = 0;
+        }
+        type = strtok(NULL, ",");
+        memcpy(&buffer[8 + sizeof(struct Column) * a], columns_info[a], sizeof(struct Column));
+        size_of_register += columns_info[a]->size;
+    }
+
+    memcpy(&buffer[0], &size_of_register, 4);
+    size_of_register = 0;
+    memcpy(&buffer[4], &size_of_register, 4);
+
+    std::fstream fs (name, std::ios::in | std::ios::out);
+    fs.seekp(BLOCK_SIZE * block_for_table_metadata, ios::beg);
+    fs.write(buffer, BLOCK_SIZE);
+
+    clean_buffer();
+    fs.seekp(BLOCK_SIZE * 2,ios_base::beg);
+    fs.read(buffer, BLOCK_SIZE);
+    struct TableInfo *tables = (struct TableInfo*)malloc(sizeof(struct TableInfo));
+    int pos = 0;
+    memcpy(tables, &buffer, sizeof(struct TableInfo));
+    pos++;
+    while(tables->used == 1){
+        memcpy(tables, &buffer[pos*sizeof(struct TableInfo)], sizeof(struct TableInfo));
+        pos++;
+    }
+    pos--;
+    tables = (struct TableInfo*)malloc(sizeof(struct TableInfo));
+    tables->used = 1;
+    strcpy(tables->table_name, table_name);
+    tables->metadata_block = block_for_table_metadata;
+    memcpy(&buffer[pos*sizeof(struct TableInfo)], tables, sizeof(struct TableInfo));
+
+    fs.seekp(BLOCK_SIZE * 2, ios::beg);
+    fs.write(buffer, BLOCK_SIZE);
+    fs.close();
+
+    toggle_bit(block_for_table_metadata, name);
 }

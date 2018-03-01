@@ -28,7 +28,19 @@ int main(int argc, char **argv){
             }
             fs.close();
         }else if(!strcmp(argv[1], "create") && !strcmp(argv[2], "table")){
-            
+            std::fstream fs("database_to_use", std::ios::in);
+            string file_name;
+            getline(fs, file_name);
+            char* database_name = new char[file_name.size() + 1];
+            copy(file_name.begin(), file_name.end(), database_name);
+            create_table(database_name, argv[3], argv[4], argv[5], argv[6]);
+        }else if(!strcmp(argv[1], "show") && !strcmp(argv[2], "tables")){
+            std::fstream fs("database_to_use", std::ios::in);
+            string file_name;
+            getline(fs, file_name);
+            char* database_name = new char[file_name.size() + 1];
+            copy(file_name.begin(), file_name.end(), database_name);
+            show_tables(database_name);
         }
     }
 }
