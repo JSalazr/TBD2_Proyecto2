@@ -16,17 +16,21 @@ int find_next_empty_block(char* name);
 
 void create_table(char* name, char* table_name, char* columns, char* types, char* key);
 
+void insert_register(char* name, char* table_name, char* columns, char* values);
+
 void show_tables(char* name);
 
 struct Column{
+    bool used;
     char column_name[50];
+    char pos_in_register;
     int size;
     char type;
     char primary_key;
 };
 
 struct TableInfo{
-    char used;
+    bool used;
     char table_name[50];
     int metadata_block;
 };

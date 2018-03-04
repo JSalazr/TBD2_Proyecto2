@@ -41,6 +41,13 @@ int main(int argc, char **argv){
             char* database_name = new char[file_name.size() + 1];
             copy(file_name.begin(), file_name.end(), database_name);
             show_tables(database_name);
+        }else if(!strcmp(argv[1], "insert")){
+            std::fstream fs("database_to_use", std::ios::in);
+            string file_name;
+            getline(fs, file_name);
+            char* database_name = new char[file_name.size() + 1];
+            copy(file_name.begin(), file_name.end(), database_name);
+            insert_register(database_name, argv[2], argv[3], argv[4]);
         }
     }
 }

@@ -107,7 +107,7 @@ void show_tables(char* name){
     int pos = 0;
     while(pos * sizeof(struct TableInfo) < BLOCK_SIZE){
         memcpy(tables, &buffer[pos*sizeof(struct TableInfo)], sizeof(struct TableInfo));
-        if(tables->used == 1){
+        if(tables->used){
             cout << tables->table_name << endl;
         }
         pos++;
@@ -131,6 +131,10 @@ void create_table(char* name, char* table_name, char* columns, char* types, char
     column = strtok(column_names, ",");
 
     int block_for_table_metadata = find_next_empty_block(name);
+    toggle_bit(block_for_table_metadata, name);
+
+    int start_of_data = find_next_empty_block(name);
+    toggle_bit(start_of_data, name);
     
     int c = 0;
     while(column != NULL){
@@ -147,6 +151,8 @@ void create_table(char* name, char* table_name, char* columns, char* types, char
         if(!strcmp(type, "int")){
             columns_info[a]->type = 'i';
             int column_size = 4;
+            memcpy(&columns_info[a]->pos_in_register, &size_of_register, 4);
+            size_of_register += 4;
             memcpy(&columns_info[a]->size, &column_size, 4);
         }else{
             columns_info[a]->type = 'v';
@@ -154,6 +160,8 @@ void create_table(char* name, char* table_name, char* columns, char* types, char
             temp = strtok(type, "(");
             temp = strtok(NULL, ")");
             int column_size = atoi(temp);
+            memcpy(&columns_info[a]->pos_in_register, &size_of_register, 4);
+            size_of_register += atoi(temp);
             memcpy(&columns_info[a]->size, &column_size, 4);
         }
         if(!strcmp(columns_info[a]->column_name, prim_key)){
@@ -162,13 +170,15 @@ void create_table(char* name, char* table_name, char* columns, char* types, char
             columns_info[a]->primary_key = 0;
         }
         type = strtok(NULL, ",");
+        columns_info[a]->used = 1;
         memcpy(&buffer[8 + sizeof(struct Column) * a], columns_info[a], sizeof(struct Column));
-        size_of_register += columns_info[a]->size;
     }
 
     memcpy(&buffer[0], &size_of_register, 4);
     size_of_register = 0;
     memcpy(&buffer[4], &size_of_register, 4);
+
+    memcpy(&buffer[4090], &start_of_data, 4);
 
     std::fstream fs (name, std::ios::in | std::ios::out);
     fs.seekp(BLOCK_SIZE * block_for_table_metadata, ios::beg);
@@ -181,7 +191,7 @@ void create_table(char* name, char* table_name, char* columns, char* types, char
     int pos = 0;
     memcpy(tables, &buffer, sizeof(struct TableInfo));
     pos++;
-    while(tables->used == 1){
+    while(tables->used){
         memcpy(tables, &buffer[pos*sizeof(struct TableInfo)], sizeof(struct TableInfo));
         pos++;
     }
@@ -194,7 +204,105 @@ void create_table(char* name, char* table_name, char* columns, char* types, char
 
     fs.seekp(BLOCK_SIZE * 2, ios::beg);
     fs.write(buffer, BLOCK_SIZE);
-    fs.close();
+    fs.close();    
+}
 
-    toggle_bit(block_for_table_metadata, name);
+void insert_register(char* name, char* table_name, char* columns, char* values){
+    char* column_names;
+    column_names = strtok(columns, "=");
+    column_names = strtok(NULL, "=");
+    char* column_values;
+    column_values = strtok(values, "=");
+    column_values = strtok(NULL, "=");
+
+    clean_buffer();
+    std::fstream fs (name, std::ios::in | std::ios::out);
+    fs.seekp(BLOCK_SIZE * 2, ios::beg);
+    fs.read(buffer, BLOCK_SIZE);
+    struct TableInfo *tables = (struct TableInfo*)malloc(sizeof(struct TableInfo));
+    int c = 0;
+    int metadata_block;
+    memcpy(tables, &buffer[c * sizeof(struct TableInfo)], sizeof(struct TableInfo));
+    while(tables->used){
+        if(!strcmp(tables->table_name, table_name)){
+            metadata_block = tables->metadata_block;
+            break;
+        }
+        c++;
+        memcpy(tables, &buffer[c * sizeof(struct TableInfo)], sizeof(struct TableInfo));
+    }
+
+    clean_buffer();
+    fs.seekp(BLOCK_SIZE * metadata_block, ios::beg);
+    fs.read(buffer, BLOCK_SIZE);
+
+    int register_size;
+    int number_of_registers;
+
+    memcpy(&register_size, &buffer[0], 4);
+    memcpy(&number_of_registers, &buffer[4], 4);
+
+    char register_to_add[register_size];
+
+    char* column;
+    column = strtok(column_names, ",");
+    c = 0;
+    struct Column columns1[15];
+    while(column != NULL){
+        memcpy(&columns1[c], &buffer[8 + c * sizeof(struct Column)], sizeof(struct Column));
+        bool found = false;
+        while(columns1[c].used){
+            if(!strcmp(columns1[c].column_name, column)){
+                found = true;
+                break;
+            }
+            c++;
+            memcpy(&columns1[c], &buffer[8 + c * sizeof(struct Column)], sizeof(struct Column));
+        }
+        if(!found){
+            cout << "Columna " << column << " no existe en esta tabla." << endl;
+            return;
+        }
+        column = strtok(NULL, ",");
+    }
+
+    char* value;
+    value = strtok(column_values, ",");
+    for(int a = 0; a <= c; a++){
+        if(columns1[a].type == 'i'){
+            int val = atoi(value);
+            memcpy(&register_to_add[columns1[a].pos_in_register], &val, 4);
+        }else if(columns1[a].type == 'v'){
+            string temp_str = value;
+            if(temp_str.size() <= columns1[a].size){
+                strcpy(&register_to_add[columns1[a].pos_in_register], value);
+            }else{
+                cout << "Varchar de tamano muy largo" << endl;
+                return;
+            }
+        }else{
+            cout << "No se puede ingresar a la tabla" << endl;
+            return;
+        }
+        value = strtok(NULL, ",");
+    }
+
+    int pos = register_size * number_of_registers;
+    int relative_block = pos / 4090;
+    int pos_in_block = pos % 4090;
+    cout << relative_block << endl;
+    int next_block;
+    memcpy(&next_block, &buffer[4090], 4);
+    clean_buffer();
+    fs.seekp(BLOCK_SIZE * next_block, ios::beg);
+    fs.read(buffer, BLOCK_SIZE);
+    for(int x = 0; x < relative_block; x++){
+        memcpy(&next_block, &buffer[4090], 4);
+        fs.seekp(BLOCK_SIZE * next_block, ios::beg);
+        fs.read(buffer, BLOCK_SIZE);
+    }
+    memcpy(&buffer[pos_in_block], register_to_add, register_size);
+    fs.seekp(BLOCK_SIZE * next_block, ios::beg);
+    fs.write(buffer, BLOCK_SIZE);
+    fs.close();
 }
