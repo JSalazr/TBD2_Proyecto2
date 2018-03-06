@@ -2,7 +2,7 @@
 #include <iostream>
 #include <cstring>
 #include <stdlib.h>
-#include "API.h"
+#include "DBAPI.h"
 
 using namespace std;
 
@@ -28,26 +28,13 @@ int main(int argc, char **argv){
             }
             fs.close();
         }else if(!strcmp(argv[1], "create") && !strcmp(argv[2], "table")){
-            std::fstream fs("database_to_use", std::ios::in);
-            string file_name;
-            getline(fs, file_name);
-            char* database_name = new char[file_name.size() + 1];
-            copy(file_name.begin(), file_name.end(), database_name);
-            create_table(database_name, argv[3], argv[4], argv[5], argv[6]);
+            create_table(get_database_to_use(), argv[3], get_values(argv[4]), get_values(argv[5]), get_values(argv[6]));
         }else if(!strcmp(argv[1], "show") && !strcmp(argv[2], "tables")){
-            std::fstream fs("database_to_use", std::ios::in);
-            string file_name;
-            getline(fs, file_name);
-            char* database_name = new char[file_name.size() + 1];
-            copy(file_name.begin(), file_name.end(), database_name);
-            show_tables(database_name);
+            show_tables(get_database_to_use());
         }else if(!strcmp(argv[1], "insert")){
-            std::fstream fs("database_to_use", std::ios::in);
-            string file_name;
-            getline(fs, file_name);
-            char* database_name = new char[file_name.size() + 1];
-            copy(file_name.begin(), file_name.end(), database_name);
-            insert_register(database_name, argv[2], argv[3], argv[4]);
+            insert_register(get_database_to_use(), argv[2], get_values(argv[3]), get_values(argv[4]));
+        }else if(!strcmp(argv[1], "select")){
+            select_show(get_database_to_use(), get_values(argv[2]), get_values(argv[3]), get_values(argv[4]));
         }
     }
 }

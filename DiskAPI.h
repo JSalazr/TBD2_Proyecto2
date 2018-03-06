@@ -4,6 +4,10 @@
 
 using namespace std;
 
+char* get_database_to_use();
+
+char* get_values(char* command);
+
 int get_size_in_bytes(int initial_size, char* multiplier);
 
 int create_database(int size, char* name);
@@ -14,11 +18,13 @@ void delete_database(char* name);
 
 int find_next_empty_block(char* name);
 
-void create_table(char* name, char* table_name, char* columns, char* types, char* key);
+void clean_buffer(char* buff);
 
-void insert_register(char* name, char* table_name, char* columns, char* values);
+void toggle_bit(int pos, char* name);
 
-void show_tables(char* name);
+void read_block(char* name, int block_number, char* buffer);
+
+void write_block(char* name, int block_number, char* buffer);
 
 struct Column{
     bool used;
