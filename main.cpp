@@ -9,11 +9,11 @@ using namespace std;
 char database_to_use[50];
 
 int main(int argc, char **argv){
-    char *option = new char[100];
+    char *option = new char[500];
     string opt;
     do{
         cout << "DBCLI > ";
-        cin.getline(option, 100);
+        cin.getline(option, 500, '\n');
         char* op1 = strtok(option, " ");
         char* op2 = strtok(NULL, " ");
         char* op3 = strtok(NULL, " ");

@@ -2,5 +2,6 @@ create database test 10 MB
 use database test
 create table test2 -columns=id,saldo,nombre -types=int,double,char(50) -key=id
 insert test2 -columns=id,saldo,nombre -values=1,50.2,'Jonathan'
-update test2 -columns=saldo -values=50.5 -where=id<>1
+insert test2 -columns=id,saldo,nombre -values=2,50.5,'Kamil'
+update test2 -columns=saldo -values=50.7 -where=id<>1
 select -table=test2 -columns=id,saldo,nombre -where=id<>1

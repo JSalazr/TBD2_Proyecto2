@@ -23,6 +23,9 @@ char* get_database_to_use(){
 }
 
 char* get_values(char* command){
+    if(command == NULL){
+        return NULL;
+    }
     char* comm;
     comm = strtok(command, "=");
     comm = strtok(NULL, "=");

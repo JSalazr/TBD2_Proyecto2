@@ -32,12 +32,19 @@ void get_register(char* name, int register_size, int block_count, int next_block
 bool check_cond(char* reg, struct Column *column, char* cond){
 
     if(cond == NULL || column == NULL){
+
         return true;
     }
     if(column->type == 'i'){
         int temp;
         memcpy(&temp, &reg[column->pos_in_register], 4);
         if(temp == atoi(cond)){
+            return true;
+        }
+    }else if(column->type == 'd'){
+        double temp;
+        memcpy(&temp, &reg[column->pos_in_register], 8);
+        if(temp == atof(cond)){
             return true;
         }
     }else if(column->type == 'c'){
@@ -284,6 +291,9 @@ void select_show(char* name, char* table, char* columns, char* where){
     if(where != NULL){
         column_with_cond = strtok(where, "<>");
         cond = strtok(NULL, "<>");
+    }else{
+        column_with_cond = NULL;
+        cond = NULL;
     }
 
     read_block(name, metadata_block, db_buffer);
@@ -322,8 +332,6 @@ void select_show(char* name, char* table, char* columns, char* where){
             }
             if(where != NULL && !strcmp(temp.column_name, column_with_cond)){
                 memcpy(col_with_cond, &temp, sizeof(struct Column));
-            }else{
-                col_with_cond = NULL;
             }
             y++;
             memcpy(&temp, &db_buffer[8 + y * sizeof(struct Column)], sizeof(struct Column));
@@ -462,9 +470,10 @@ void update_register(char* name, char* table, char* columns, char* values, char*
                     double temp = atof(value);
                     memcpy(&register_temp[columns1[x].pos_in_register], &temp, 8);
                 }
-                values = strtok(NULL, ",");
+                value = strtok(NULL, ",");
             }
-            if(old_block != next_block){
+            
+            if(this_block < register_size){
                 memcpy(&db_buffer[a * register_size], register_temp, this_block);
                 write_block(name, this_block, db_buffer);
                 read_block(name, next_block, db_buffer);
