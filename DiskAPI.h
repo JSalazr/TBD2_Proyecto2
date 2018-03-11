@@ -2,6 +2,8 @@
 #include <iostream>
 #include <fstream>
 
+#pragma once
+
 using namespace std;
 
 char* get_database_to_use();

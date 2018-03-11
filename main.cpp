@@ -34,6 +34,8 @@ int main(int argc, char **argv){
             strcpy(database_to_use, op3);
         }else if(!strcmp(op1, "create") && !strcmp(op2, "table")){
             create_table(database_to_use, op3, get_values(op4), get_values(op5), get_values(op6));
+        }else if(!strcmp(op1, "drop") && !strcmp(op2, "table")){
+            drop_table(database_to_use, op3);
         }else if(!strcmp(op1, "show") && !strcmp(op2, "tables")){
             show_tables(database_to_use);
         }else if(!strcmp(op1, "insert")){
@@ -42,6 +44,8 @@ int main(int argc, char **argv){
             select_show(database_to_use, get_values(op2), get_values(op3), get_values(op4));
         }else if(!strcmp(op1, "update")){
             update_register(database_to_use, op2, get_values(op3), get_values(op4), get_values(op5));
+        }else if(!strcmp(op1, "delete")){
+            delete_register(database_to_use, op2, get_values(op3));
         }else if(!strcmp(op1, "exit")){
             break;
         }

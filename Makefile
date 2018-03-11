@@ -1,5 +1,5 @@
 TARGET=Proy2
-C_SRCFILES=main.cpp DiskAPI.cpp DBAPI.cpp
+C_SRCFILES=main.cpp DiskAPI.cpp DBAPI.cpp DBAPI_Helpers.cpp
 OBJ_FILES=${C_SRCFILES:.cpp=.o}
 .PHONY: clean
 

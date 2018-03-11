@@ -13,62 +13,6 @@ using namespace std;
 
 char db_buffer[BLOCK_SIZE];
 
-void get_register(char* name, int register_size, int block_count, int next_block, char* register_temp, int a){
-    if(block_count + register_size > 4092){
-        int this_block = 4092 - block_count;
-        memcpy(register_temp, &db_buffer[a * register_size], this_block);
-        memcpy(&next_block, &db_buffer[4092], 4);
-        read_block(name, next_block, db_buffer);
-        memcpy(&register_temp[block_count], db_buffer, register_size - this_block);
-    }else{
-        if(block_count == 4092){
-            memcpy(&next_block, &db_buffer[4092], 4);
-            read_block(name, next_block, db_buffer);
-        }
-        memcpy(register_temp, &db_buffer[a * register_size], register_size);
-    } 
-}
-
-bool check_cond(char* reg, struct Column *column, char* cond){
-
-    if(cond == NULL || column == NULL){
-
-        return true;
-    }
-    if(column->type == 'i'){
-        int temp;
-        memcpy(&temp, &reg[column->pos_in_register], 4);
-        if(temp == atoi(cond)){
-            return true;
-        }
-    }else if(column->type == 'd'){
-        double temp;
-        memcpy(&temp, &reg[column->pos_in_register], 8);
-        if(temp == atof(cond)){
-            return true;
-        }
-    }else if(column->type == 'c'){
-        return !strcmp(&reg[column->pos_in_register], cond);
-    }
-    return false;
-}
-
-int find_table(char* name, char* table_name){
-    read_block(name, 2, db_buffer);
-    struct TableInfo *tables = (struct TableInfo*)malloc(sizeof(struct TableInfo));
-    int c = 0;
-    memcpy(tables, &db_buffer[c * sizeof(struct TableInfo)], sizeof(struct TableInfo));
-    while(tables->used){
-        if(!strcmp(tables->table_name, table_name)){
-            return tables->metadata_block;
-        }
-        c++;
-        memcpy(tables, &db_buffer[c * sizeof(struct TableInfo)], sizeof(struct TableInfo));
-    }
-
-    return -1;
-}
-
 void show_tables(char* name){
     read_block(name, 2, db_buffer);
 
@@ -168,6 +112,41 @@ void create_table(char* name, char* table_name, char* columns, char* types, char
     memcpy(&db_buffer[pos*sizeof(struct TableInfo)], tables, sizeof(struct TableInfo));
 
     write_block(name, 2, db_buffer);
+}
+
+void drop_table(char* name, char* table){
+    int metadata_block = find_table(name, table);
+    
+    if(metadata_block == -1){
+        cout << "Tabla no existe" << endl;
+        return;
+    }
+
+    read_block(name, 2, db_buffer);
+    struct TableInfo *tables = (struct TableInfo*)malloc(sizeof(struct TableInfo));
+    int c = 0;
+    memcpy(tables, &db_buffer[c * sizeof(struct TableInfo)], sizeof(struct TableInfo));
+    while(tables->used){
+        if(!strcmp(tables->table_name, table)){
+            break;
+        }
+        c++;
+        memcpy(tables, &db_buffer[c * sizeof(struct TableInfo)], sizeof(struct TableInfo));
+    }
+
+    memset(tables, 0, sizeof(struct TableInfo));
+    delete_register(name, table, NULL);
+    read_block(name, 2, db_buffer);
+    memcpy(&db_buffer[c * sizeof(struct TableInfo)], tables, sizeof(struct TableInfo));
+    write_block(name, 2, db_buffer);
+    
+    int next_block = tables->metadata_block;
+    while(next_block != 0){
+        toggle_bit(next_block, name);
+        char temp_buff[4096];
+        read_block(name, next_block, temp_buff);
+        memcpy(&next_block, &temp_buff[4092], 4);
+    }
 }
 
 void insert_register(char* name, char* table_name, char* columns, char* values){
@@ -290,6 +269,7 @@ void select_show(char* name, char* table, char* columns, char* where){
 
     if(where != NULL){
         column_with_cond = strtok(where, "<>");
+        //cout << column_with_cond << endl;
         cond = strtok(NULL, "<>");
     }else{
         column_with_cond = NULL;
@@ -313,8 +293,7 @@ void select_show(char* name, char* table, char* columns, char* where){
     int c = 0;
     int y = 0;
     struct Column columns1[15];
-    struct Column *col_with_cond;
-    col_with_cond = (struct Column*)malloc(sizeof(struct Column));
+    struct Column col_with_cond;
 
     string column_names;
 
@@ -328,15 +307,19 @@ void select_show(char* name, char* table, char* columns, char* where){
                 column_names += column;
                 found = true;
                 c++;
+                if(where != NULL && !strcmp(temp.column_name, column_with_cond)){
+                    memcpy(&col_with_cond, &temp, sizeof(struct Column));
+                }
                 break;
             }
             if(where != NULL && !strcmp(temp.column_name, column_with_cond)){
-                memcpy(col_with_cond, &temp, sizeof(struct Column));
+                memcpy(&col_with_cond, &temp, sizeof(struct Column));
+                found = true;
             }
             y++;
             memcpy(&temp, &db_buffer[8 + y * sizeof(struct Column)], sizeof(struct Column));
         }
-        if(!found){
+        if(!found && column != NULL){
             cout << "Columna " << column << " no existe en esta tabla." << endl;
             return;
         }
@@ -398,6 +381,10 @@ void update_register(char* name, char* table, char* columns, char* values, char*
         column_with_cond = strtok(where, "<>");
         cond = strtok(NULL, "<>");
     }
+    else{
+        column_with_cond = NULL;
+        cond = NULL;
+    }
 
     read_block(name, metadata_block, db_buffer);
     
@@ -416,8 +403,7 @@ void update_register(char* name, char* table, char* columns, char* values, char*
     int c = 0;
     int y = 0;
     struct Column columns1[15];
-    struct Column *col_with_cond;
-    col_with_cond = (struct Column*)malloc(sizeof(struct Column));
+    struct Column col_with_cond;
     
     while(column != NULL){
         struct Column temp;
@@ -428,17 +414,19 @@ void update_register(char* name, char* table, char* columns, char* values, char*
                 memcpy(&columns1[c], &temp, sizeof(struct Column));
                 found = true;
                 c++;
+                if(where != NULL && !strcmp(temp.column_name, column_with_cond)){
+                    memcpy(&col_with_cond, &temp, sizeof(struct Column));
+                }
                 break;
             }
             if(where != NULL && !strcmp(temp.column_name, column_with_cond)){
-                memcpy(col_with_cond, &temp, sizeof(struct Column));
-            }else{
-                col_with_cond = NULL;
+                memcpy(&col_with_cond, &temp, sizeof(struct Column));
+                found = true;
             }
             y++;
             memcpy(&temp, &db_buffer[8 + y * sizeof(struct Column)], sizeof(struct Column));
         }
-        if(!found){
+        if(!found && column != NULL){
             cout << "Columna " << column << " no existe en esta tabla." << endl;
             return;
         }
@@ -486,4 +474,83 @@ void update_register(char* name, char* table, char* columns, char* values, char*
         }
         block_count += register_size;
     }
+}
+
+void delete_register(char* name, char* table, char* where){
+    int metadata_block = find_table(name, table);
+    
+    if(metadata_block == -1){
+        cout << "Tabla no existe" << endl;
+        return;
+    }
+
+    char* column_with_cond;
+    char* cond;
+
+    if(where != NULL){
+        column_with_cond = strtok(where, "<>");
+        cond = strtok(NULL, "<>");
+    }else{
+        column_with_cond = NULL;
+        cond = NULL;
+    }
+
+    read_block(name, metadata_block, db_buffer);
+    
+    int register_size;
+    int number_of_registers;
+    int next_block;
+
+    memcpy(&register_size, &db_buffer[0], 4);
+    memcpy(&number_of_registers, &db_buffer[4], 4);
+    memcpy(&next_block, &db_buffer[4092], 4);
+
+    char register_to_del[register_size];
+
+    int y = 0;
+    struct Column col_with_cond;
+
+    struct Column temp;
+    memcpy(&temp, &db_buffer[8 + y * sizeof(struct Column)], sizeof(struct Column));
+    bool found = false;
+    while(temp.used){
+        if(where != NULL && !strcmp(temp.column_name, column_with_cond)){
+            memcpy(&col_with_cond, &temp, sizeof(struct Column));
+            found = true;
+            break;
+        }
+        y++;
+        memcpy(&temp, &db_buffer[8 + y * sizeof(struct Column)], sizeof(struct Column));
+    }
+    if(!found && column_with_cond != NULL){
+        cout << "Columna " << column_with_cond << " no existe en esta tabla." << endl;
+        return;
+    }
+
+    read_block(name, next_block, db_buffer);
+    int block_count = 0;
+
+    for(int a = 0; a < number_of_registers; a++){
+        char register_temp[register_size];
+        int old_block = next_block;
+        int this_block = 4092 - block_count;
+        get_register(name, register_size, block_count, next_block, register_temp, a);
+
+        if(check_cond(register_temp, col_with_cond, cond)){
+            memset(register_temp, 0, register_size);
+            
+            if(this_block < register_size){
+                memcpy(&db_buffer[a * register_size], register_temp, this_block);
+                write_block(name, this_block, db_buffer);
+                read_block(name, next_block, db_buffer);
+                memcpy(db_buffer, &register_temp[block_count], register_size - this_block);
+                write_block(name, next_block, db_buffer);
+            }else{
+                memcpy(&db_buffer[a * register_size], register_temp, register_size);
+                write_block(name, next_block, db_buffer);
+            }
+        }
+        block_count += register_size;
+    }
+
 }
